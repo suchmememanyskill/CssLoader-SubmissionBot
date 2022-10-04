@@ -278,6 +278,8 @@ public class CssSlashCommands : SlashCommandBase
         await themeDb.Commit($"Submit theme {themeEntry.Name}");
         await themeDb.Push(true);
 
+        Log("Pushed .json entry to ThemeDB");
+
         if (!await themeDb.DoesPullRequestExist(Context.User.Id.ToString()))
         {
             string title = $"Submit Theme {themeEntry.Name}";
@@ -296,9 +298,11 @@ public class CssSlashCommands : SlashCommandBase
             string body = $"This pull request was submitted by a bot\nSubmitted by {Context.User.Username} ({themeEntry.Author} in theme)\n\nUser accepted the pull request checklist\n{bundledState}\n{keyboardState}\nURL: [{themeEntry.Name}](https://github.com/SuchMeme-Bot/CssLoader-Themes/tree/main/{finalThemeDirName.Replace(" ", "%20")})";
             string url = await themeDb.CreatePullRequest(title, body);
             await FollowupAsync($"Successfully submitted theme\n{url}");
+            Log($"Created pull request @ {url}");
         }
         else
         {
+            Log("Pull request already exists, skipping...");
             await FollowupAsync("Successfully updated theme submission");
         }
         
