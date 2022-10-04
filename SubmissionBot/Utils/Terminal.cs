@@ -75,6 +75,8 @@ public class Terminal
 
         if (result)
             ExitCode = proc.ExitCode;
+        else
+            ExitCode = -69420;
         IsActive = false;
         Log($"Terminal exited with code {ExitCode}");
         proc.Close();

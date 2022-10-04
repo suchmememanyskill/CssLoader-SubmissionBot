@@ -152,7 +152,15 @@ public class CommandHandler
                     {
                         if (arg2 is SocketInteractionContext ctx2)
                         {
-                            await ctx2.Interaction.RespondAsync(execResult.Exception.Message, ephemeral:true);
+                            try
+                            {
+                                await ctx2.Interaction.RespondAsync(execResult.Exception.Message, ephemeral: true);
+                            }
+                            catch (InvalidOperationException e)
+                            {
+                                await ctx2.Interaction.FollowupAsync(execResult.Exception.Message);
+                            }
+                            
                             return;
                         }
                     }

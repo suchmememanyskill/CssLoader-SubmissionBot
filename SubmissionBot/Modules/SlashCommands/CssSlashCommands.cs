@@ -1,7 +1,6 @@
 ﻿using System.IO.Compression;
 using Discord;
 using Discord.Interactions;
-using LibGit2Sharp;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using SubmissionBot.Modules.Base;
@@ -63,6 +62,8 @@ public class ThemeDbEntry
     }
 }
 
+public record ThemeEntry(string Name);
+
 [Group("css", "Submit CSS themes to the CSS ThemeDB")]
 public class CssSlashCommands : SlashCommandBase
 {
@@ -90,6 +91,8 @@ public class CssSlashCommands : SlashCommandBase
                 Log($"Failed to delete '{tempDir}', {e.Message}");
             }
         }
+
+        _tempDirs = new();
     }
 
     private void Log(string message)
@@ -198,7 +201,7 @@ public class CssSlashCommands : SlashCommandBase
         Log($"Extracted zip into '{fullThemePath}'");
         
         string themeDbDir = GetTemporaryDirectory();
-        Repository.Clone("https://github.com/suchmememanyskill/CssLoader-ThemeDb", themeDbDir);
+        await Git.Clone("https://github.com/suchmememanyskill/CssLoader-ThemeDb", themeDbDir);
         
         Log($"Cloned ThemeDB repo into {themeDbDir}");
 
@@ -226,10 +229,71 @@ public class CssSlashCommands : SlashCommandBase
             return;
         }
 
-        await FollowupAsync("Theme looks good. Done for today");
+        ThemeEntry themeEntry =
+            JsonConvert.DeserializeObject<ThemeEntry>(
+                await File.ReadAllTextAsync(Path.Join(fullThemePath, "theme.json")))!;
+
+        Log($"Theme looks good. Theme name is {themeEntry.Name}");
+
+        Git git = new(Config["cssRepoPath"]);
+        await git.ResetHard("HEAD");
+        await git.Clean();
+        await git.Pull();
+
+        string finalThemePath = Path.Join(git.Path, $"CSS-{Context.User.Id}-{themeEntry.Name}");
         
+        if (Directory.Exists(finalThemePath))
+            Directory.Delete(finalThemePath, true);
+
+        Directory.CreateDirectory(finalThemePath);
+        CopyFilesRecursively(fullThemePath, finalThemePath);
+
+        await git.Add(".");
+
+        int filesChangedCount = await git.GetStagedFileCount();
+
+        if (filesChangedCount <= 0)
+        {
+            await FollowupAsync("No files have changed since the last upload");
+            CleanupTemporaryDirectories();
+            return;
+        }
+
+        await git.Commit($"Adding/Updating {themeEntry.Name}");
+        await git.Push();
         
+        Log("Pushed theme to github");
         
+        await FollowupAsync("A");
+
         CleanupTemporaryDirectories();
+    }
+
+    [SlashCommand("test", "test")]
+    public async Task Test()
+    {
+        string themeDbDir = GetTemporaryDirectory();
+        await Git.Clone("https://github.com/suchmememanyskill/CssLoader-ThemeDb", themeDbDir);
+    }
+
+    ~CssSlashCommands()
+    {
+        Log("Deconstructing class");
+        CleanupTemporaryDirectories();
+    }
+    
+    private static void CopyFilesRecursively(string sourcePath, string targetPath)
+    {
+        //Now Create all of the directories
+        foreach (string dirPath in Directory.GetDirectories(sourcePath, "*", SearchOption.AllDirectories))
+        {
+            Directory.CreateDirectory(dirPath.Replace(sourcePath, targetPath));
+        }
+
+        //Copy all the files & Replaces any files with the same name
+        foreach (string newPath in Directory.GetFiles(sourcePath, "*.*",SearchOption.AllDirectories))
+        {
+            File.Copy(newPath, newPath.Replace(sourcePath, targetPath), true);
+        }
     }
 }

@@ -24,6 +24,8 @@ class Program
         {
             "token",
             "testServer",
+            "cssRepoPath",
+            "cssDbRepoPath"
         };
         if (config.GetChildren().Count(x => required.Contains(x.Key)) != required.Count())
             throw new Exception("Missing configuration...");
