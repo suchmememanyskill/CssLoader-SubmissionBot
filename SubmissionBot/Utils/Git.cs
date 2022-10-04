@@ -81,4 +81,43 @@ public class Git
         ThrowOnInvalidErrorCode();
         return _terminal.StdOut.Count;
     }
+
+    public async Task<List<string>> GetBranches()
+    {
+        await _terminal.Exec("git", "branch");
+        ThrowOnInvalidErrorCode();
+        return _terminal.StdOut.Select(x => x.Replace("*", "").Trim()).ToList();
+    }
+
+    public async Task CreateBranch(string name)
+    {
+        List<string> branches = await GetBranches();
+
+        if (branches.Contains(name))
+            await _terminal.Exec("git", $"branch -D {name}");
+
+
+        await _terminal.Exec("git", $"branch {name}");
+    }
+
+    public async Task<string> GetLatestCommitHash()
+    {
+        await _terminal.Exec("git", "rev-parse --short HEAD");
+        ThrowOnInvalidErrorCode();
+        return _terminal.StdOut.First().Trim();
+    }
+
+    public async Task<bool> DoesPullRequestExist(string branchName)
+    {
+        await _terminal.Exec("gh", $"pr list --json headRefName,author --head \"{branchName}\" --author \"@me\"");
+        ThrowOnInvalidErrorCode();
+        return _terminal.StdOut.First().Trim() != "[]";
+    }
+
+    public async Task<string> CreatePullRequest(string title, string body)
+    {
+        await _terminal.Exec("gh", $"pr create --title \"{title}\" --body \"{body}\"");
+        ThrowOnInvalidErrorCode();
+        return _terminal.StdOut.Last();
+    }
 }

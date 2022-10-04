@@ -62,7 +62,7 @@ public class ThemeDbEntry
     }
 }
 
-public record ThemeEntry(string Name);
+public record ThemeEntry(string Name, string Author);
 
 [Group("css", "Submit CSS themes to the CSS ThemeDB")]
 public class CssSlashCommands : SlashCommandBase
@@ -101,7 +101,7 @@ public class CssSlashCommands : SlashCommandBase
     }
     
     [SlashCommand("submit", "Submits a CSS Theme. This will override any submission you currently have open")]
-    public async Task Submit(IAttachment theme,
+    public async Task Submit([Summary(description: "A .zip containing the theme. theme.json needs to be on the root level")] IAttachment theme,
         [Summary(description: "Is this theme in line with our checklist?")] ChecklistAcceptOptions checklist,
         [Summary(description: "How does your theme bundle other themes, if it does?")] ThemeBundleOptions themeBundle,
         [Summary(description: "If your theme themes the keyboard, how does it do it?")] ThemeTypeOptions keyboardBehaviour)
@@ -199,6 +199,16 @@ public class CssSlashCommands : SlashCommandBase
         ZipFile.ExtractToDirectory(themeZipPath, fullThemePath);
         
         Log($"Extracted zip into '{fullThemePath}'");
+
+        if (!File.Exists(Path.Join(fullThemePath, "thumbnail.jpg")))
+        {
+            await FollowupAsync("Zip does not contain a `thumbnail.jpg` image");
+            CleanupTemporaryDirectories();
+            return;
+        }
+
+        string thumbnailPath = Path.Join(themeDir, "thumbnail.jpg");
+        File.Move(Path.Join(fullThemePath, "thumbnail.jpg"), thumbnailPath);
         
         string themeDbDir = GetTemporaryDirectory();
         await Git.Clone("https://github.com/suchmememanyskill/CssLoader-ThemeDb", themeDbDir);
@@ -235,12 +245,13 @@ public class CssSlashCommands : SlashCommandBase
 
         Log($"Theme looks good. Theme name is {themeEntry.Name}");
 
-        Git git = new(Config["cssRepoPath"]);
-        await git.ResetHard("HEAD");
-        await git.Clean();
-        await git.Pull();
+        Git themeStorage = new(Config["cssRepoPath"]);
+        await themeStorage.ResetHard("HEAD");
+        await themeStorage.Clean();
+        await themeStorage.Pull();
 
-        string finalThemePath = Path.Join(git.Path, $"CSS-{Context.User.Id}-{themeEntry.Name}");
+        string finalThemeDirName = $"CSS-{Context.User.Id}-{themeEntry.Name}";
+        string finalThemePath = Path.Join(themeStorage.Path, finalThemeDirName);
         
         if (Directory.Exists(finalThemePath))
             Directory.Delete(finalThemePath, true);
@@ -248,9 +259,9 @@ public class CssSlashCommands : SlashCommandBase
         Directory.CreateDirectory(finalThemePath);
         CopyFilesRecursively(fullThemePath, finalThemePath);
 
-        await git.Add(".");
+        await themeStorage.Add(".");
 
-        int filesChangedCount = await git.GetStagedFileCount();
+        int filesChangedCount = await themeStorage.GetStagedFileCount();
 
         if (filesChangedCount <= 0)
         {
@@ -259,13 +270,63 @@ public class CssSlashCommands : SlashCommandBase
             return;
         }
 
-        await git.Commit($"Adding/Updating {themeEntry.Name}");
-        await git.Push();
+        await themeStorage.Commit($"Adding/Updating {themeEntry.Name}");
+        await themeStorage.Push();
         
         Log("Pushed theme to github");
-        
-        await FollowupAsync("A");
 
+        Git themeDb = new(Config["cssDbRepoPath"]);
+        await themeDb.Checkout("main");
+        await themeDb.Fetch("upstream");
+        await themeDb.Clean();
+        await themeDb.ResetHard("upstream/main");
+
+        await themeDb.CreateBranch(Context.User.Id.ToString());
+        await themeDb.Checkout(Context.User.Id.ToString());
+
+        string relativeImagePath = $"images/{themeEntry.Author}/{themeEntry.Name}.jpg";
+        string imagePathDir = Path.Join(themeDb.Path, $"images/{themeEntry.Author}");
+
+        if (!Directory.Exists(imagePathDir))
+            Directory.CreateDirectory(imagePathDir);
+        
+        File.Copy(thumbnailPath, Path.Join(imagePathDir, $"{themeEntry.Name}.jpg"));
+
+        ThemeDbEntry entry = new("https://github.com/SuchMeme-Bot/CssLoader-Themes", finalThemeDirName,
+            await themeStorage.GetLatestCommitHash(), relativeImagePath);
+
+        await File.WriteAllTextAsync(
+            Path.Join(themeDb.Path, "themes", $"{themeEntry.Author}-{themeEntry.Name}.json"),
+            JsonConvert.SerializeObject(entry));
+
+        await themeDb.Add(".");
+        await themeDb.Commit($"Submit theme {themeEntry.Name}");
+        await themeDb.Push(true);
+
+        if (!await themeDb.DoesPullRequestExist(Context.User.Id.ToString()))
+        {
+            string title = $"Submit Theme {themeEntry.Name}";
+
+            string bundledState = (themeBundle == ThemeBundleOptions.ToggleableBundled)
+                ? "This theme bundles other themes (which are toggleable)"
+                : "This theme does not bundle other themes";
+
+            string keyboardState = (keyboardBehaviour == ThemeTypeOptions.SystemWideToggleableKeyboard)
+                ?
+                "This theme bundles a keyboard theme (which is toggleable)"
+                : (keyboardBehaviour == ThemeTypeOptions.KeyboardDefaultKeyboard)
+                    ? "This theme is a keyboard theme and targets the default keyboard"
+                    : "This theme does not touch the keyboard";
+            
+            string body = $"This pull request was submitted by a bot\nSubmitted by {Context.User.Username} ({themeEntry.Author} in theme)\n\nUser accepted the pull request checklist\n{bundledState}\n{keyboardState}\nURL: [{themeEntry.Name}](https://github.com/SuchMeme-Bot/CssLoader-Themes/tree/main/{finalThemeDirName.Replace(" ", "%20")})";
+            string url = await themeDb.CreatePullRequest(title, body);
+            await FollowupAsync($"Successfully submitted theme\n{url}");
+        }
+        else
+        {
+            await FollowupAsync("Successfully updated theme submission");
+        }
+        
         CleanupTemporaryDirectories();
     }
 
