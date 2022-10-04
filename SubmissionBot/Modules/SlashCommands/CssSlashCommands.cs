@@ -276,7 +276,7 @@ public class CssSlashCommands : SlashCommandBase
 
         await themeDb.Add(".");
         await themeDb.Commit($"Submit theme {themeEntry.Name}");
-        await themeDb.Push(true);
+        await themeDb.Push(Context.User.Id.ToString(), true);
 
         Log("Pushed .json entry to ThemeDB");
 

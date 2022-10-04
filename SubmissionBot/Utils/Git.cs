@@ -68,6 +68,12 @@ public class Git
         await _terminal.Exec("git", "push" + (force ? " --force" : ""));
         ThrowOnInvalidErrorCode();
     }
+    
+    public async Task Push(string branch, bool force = false)
+    {
+        await _terminal.Exec("git", $"push --set-upstream origin {branch}" + (force ? " --force" : ""));
+        ThrowOnInvalidErrorCode();
+    }
 
     public async Task Checkout(string branch)
     {
