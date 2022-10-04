@@ -8,16 +8,6 @@ using SubmissionBot.Utils;
 
 namespace SubmissionBot.Modules.SlashCommands;
 
-public enum ChecklistAcceptOptions
-{
-    [ChoiceDisplay("I Accept all items on the checklist")]
-    Accept,
-    [ChoiceDisplay("I cannot check some items on the checklist")]
-    Deny,
-    [ChoiceDisplay("Where can i find the checklist?")]
-    NotRead,
-}
-
 public enum ThemeBundleOptions
 {
     [ChoiceDisplay("This theme does not bundle other themes")]
@@ -102,24 +92,9 @@ public class CssSlashCommands : SlashCommandBase
     
     [SlashCommand("submit", "Submits a CSS Theme. This will override any submission you currently have open")]
     public async Task Submit([Summary(description: "A .zip containing the theme. theme.json needs to be on the root level")] IAttachment theme,
-        [Summary(description: "Is this theme in line with our checklist?")] ChecklistAcceptOptions checklist,
         [Summary(description: "How does your theme bundle other themes, if it does?")] ThemeBundleOptions themeBundle,
         [Summary(description: "If your theme themes the keyboard, how does it do it?")] ThemeTypeOptions keyboardBehaviour)
     {
-        if (checklist == ChecklistAcceptOptions.NotRead)
-        {
-            await me.RespondEphermeral(
-                "The checklist can be found here: <https://github.com/suchmememanyskill/CssLoader-ThemeDb/blob/main/.github/pull_request_template.md>");
-            return;
-        }
-
-        if (checklist == ChecklistAcceptOptions.Deny)
-        {
-            await me.RespondEphermeral(
-                "Please contact one of the CSSLoader ThemeDB Admins. All items on the checklist need to be checked for a successful submission");
-            return;
-        }
-
         if (themeBundle == ThemeBundleOptions.Bundled)
         {
             await me.RespondEphermeral(
@@ -329,14 +304,7 @@ public class CssSlashCommands : SlashCommandBase
         
         CleanupTemporaryDirectories();
     }
-
-    [SlashCommand("test", "test")]
-    public async Task Test()
-    {
-        string themeDbDir = GetTemporaryDirectory();
-        await Git.Clone("https://github.com/suchmememanyskill/CssLoader-ThemeDb", themeDbDir);
-    }
-
+    
     ~CssSlashCommands()
     {
         Log("Deconstructing class");
